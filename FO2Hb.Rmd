@@ -1,5 +1,5 @@
 ---
-title: 'Supplement 1'
+title: 'Supplement 2'
 subtitle: "Fraction of oxygenated haemoglobin (FO2Hb)"
 author: "Peter Kamerman and Etienne Basson"
 date: "Last updated: `r format(Sys.Date(), '%d %B %Y')`"
@@ -685,7 +685,7 @@ data.frame(O2Hb = bstar_grid$O2Hb,
 
 # Code for publication plots
 
-```{r pub_plots, eval = FALSE}
+```{r pub_plots}
 library(patchwork)
 
 lplot <- ggplot(data = lstar_interval) + 
