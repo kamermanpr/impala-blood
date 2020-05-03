@@ -1,0 +1,157 @@
+---
+title: 'Supplement 1'
+subtitle: "Co-oximetry"
+author: "Peter Kamerman and Etienne Basson"
+date: "Last updated: `r format(Sys.Date(), '%d %B %Y')`"
+mainfont: Helvetica
+geometry: margin=15mm
+---
+
+```{r setup, include = FALSE}
+# Load packages
+library(tidyverse)
+library(magrittr)
+library(skimr)
+library(knitr)
+
+# skimr functions
+my_skim <- skim_with(numeric = sfl(n_missing = NULL,
+                                   complete_rate = NULL,
+                                   hist = NULL,
+                                   p0 = NULL,
+                                   p25 = NULL,
+                                   p50 = NULL,
+                                   p75 = NULL,
+                                   p100 = NULL))
+
+# Set chunk options
+knitr::opts_chunk$set(warning = FALSE,
+                      message = FALSE)
+```
+
+----
+
+# Research question
+
+1. Descriptive statistics on co-oximetry results, namely, total haemoglobin concentration (Hb, g/dl) functional oxyhaemoglobin saturation (SaO2, %Hb), fractional oxyhaemoglobin saturation (FO2Hb, %Hb), carboxyhaemoglobin (COHb, %Hb), and methaemoglobin (MetHb, %Hb).
+
+----
+
+# Load data 
+
+```{r load_data}
+data <- read_rds('data-cleaned/clean-data.rds')
+```
+
+----
+
+# Quick look at the data
+
+```{r quick_look}
+dim(data)
+names(data)
+glimpse(data)
+```
+
+----
+
+# Prepare data
+
+```{r prepare_data}
+# Select columns
+data_cols <- data %>% 
+    select(Animal_ID, Trial, Time_min, total_Hb, 
+           Coox_SaO2, O2Hb, COHb, MetHb) %>% 
+    # Rename columns
+    rename(Time_minutes = Time_min,
+           `Hb (g/dl)` = total_Hb,
+           `SaO2 (%)` = Coox_SaO2,
+           `FO2Hb (%)` = O2Hb,
+           `COHb (%)` = COHb,
+           `MetHb (%)` = MetHb) %>%
+    # Limit time to first 30 minutes
+    filter(Time_minutes <= 30)
+# Data points per animal
+data_n <- 
+
+# Average over trials for each animal
+data_compact <- data_cols %>% 
+    # Calculate average response over trials for each animal
+    group_by(Animal_ID, Time_minutes) %>% 
+    summarise(`Hb (g/dl)` = mean(`Hb (g/dl)`, na.rm = TRUE),
+              `SaO2 (%)` = mean(`SaO2 (%)`, na.rm = TRUE),
+              `FO2Hb (%)` = mean(`FO2Hb (%)`, na.rm = TRUE),
+              `COHb (%)` = mean(`COHb (%)`, na.rm = TRUE),
+              `MetHb (%)` = mean(`MetHb (%)`, na.rm = TRUE)) %>% 
+    ungroup() %>% 
+    select(-Animal_ID) %>% 
+    complete(Time_minutes)
+```
+
+----
+
+# Tabulate
+
+**Trials**: number of separate immobilzation events.
+
+## Number of immobilization trials and data points per animal
+
+```{r tabulate_1, results = 'asis'}
+# Trials
+trials <- data_cols %>% 
+    select(Animal_ID, Trial) %>% 
+    distinct() %>% 
+    group_by(Animal_ID) %>% 
+    summarise(`Number of trials` = n()) %>% 
+    ungroup() %>% 
+    rename(Animal = Animal_ID) %>% 
+    mutate(Animal = str_remove(Animal,
+                               pattern = 'I'),
+           Animal = as.numeric(Animal)) %>% 
+    arrange(Animal) 
+
+# Data points
+data_points <- data_cols %>% 
+    select(Animal_ID) %>% 
+    group_by(Animal_ID) %>% 
+    summarise(`Number of data points` = n()) %>% 
+    ungroup() %>% 
+    rename(Animal = Animal_ID) %>% 
+    mutate(Animal = str_remove(Animal,
+                               pattern = 'I'),
+           Animal = as.numeric(Animal)) %>% 
+    arrange(Animal) 
+
+# Table
+trials %>% 
+    left_join(data_points) %>% 
+    kable(caption = 'Number of trails and measurements')
+```
+
+## Summary statistics fro co-oximetry measurements
+
+Where animals were involved in more than one trial, data points occurring at the same time-point across trials were averaged.
+
+```{r tabulate, results = 'asis'}
+# Average over trials for each animal
+data_cols %>% 
+    # Calculate average response over trials for each animal
+    group_by(Animal_ID, Time_minutes) %>% 
+    summarise(`Hb (g/dl)` = mean(`Hb (g/dl)`, na.rm = TRUE),
+              `SaO2 (%)` = mean(`SaO2 (%)`, na.rm = TRUE),
+              `FO2Hb (%)` = mean(`FO2Hb (%)`, na.rm = TRUE),
+              `COHb (%)` = mean(`COHb (%)`, na.rm = TRUE),
+              `MetHb (%)` = mean(`MetHb (%)`, na.rm = TRUE)) %>% 
+    ungroup() %>%
+    group_by(Time_minutes) %>% 
+    select(-Animal_ID) %>% 
+    my_skim()
+```
+
+----
+
+# Session Information
+
+```{r session}
+sessionInfo()
+```
