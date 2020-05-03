@@ -1,0 +1,777 @@
+---
+title: 'Supplement 3'
+subtitle: "Fraction of oxygenated haemoglobin (FO2Hb)"
+author: "Peter Kamerman and Etienne Basson"
+date: "Last updated: `r format(Sys.Date(), '%d %B %Y')`"
+mainfont: Helvetica
+geometry: margin=15mm
+---
+
+```{r setup, include = FALSE}
+# Load packages
+library(tidyverse)
+library(magrittr)
+library(skimr)
+library(lmerTest)
+library(merTools)
+library(sjPlot)
+library(lqmm)
+library(MuMIn)
+library(knitr)
+library(patchwork)
+
+# ggplot theme
+theme_set(new = theme_bw(base_size = 18) +
+              theme(panel.grid = element_blank(),
+                    plot.title = element_text(size = 18),
+                    plot.subtitle = element_text(size = 14)))
+
+# Create figures directory
+if(!dir.exists('figures')){
+    dir.create('figures')
+}
+
+# skimr functions
+my_skim <- skim_with(numeric = sfl(hist = NULL))
+
+# Set chunk options
+knitr::opts_chunk$set(warning = FALSE,
+                      message = FALSE,
+                      fig.align = 'center',
+                      fig.path = 'figures/supplement-3-FO2Hb/',
+                      fig.height = 5.8)
+```
+
+----
+
+# Research question
+
+1. Determine whether there is an association between blood colour components (CIE L\*a\*b\*) and fraction of oxygenated haemoglobin.
+
+2. Generate a predictive model of the (CIE L\*a\*b\*) colour component from fraction of oxygenated haemoglobin.
+
+----
+
+# Load data 
+
+```{r load_data}
+data <- read_rds('data-cleaned/clean-data.rds')
+```
+
+----
+
+# Quick look at the data
+
+```{r quick_look}
+dim(data)
+names(data)
+glimpse(data)
+data[, !(names(data) %in% c('Trial'))] %>% 
+    select_if(is.numeric) %>% 
+    my_skim() 
+```
+
+----
+
+# Prepare data
+
+```{r prepare_data}
+# Convert Animal ID to a factor
+data %<>%
+    mutate(Animal_ID = factor(Animal_ID,
+                              levels = c('I1', 'I2', 'I3', 'I4', 'I5',
+                                         'I6', 'I8', 'I9', 'I10', 'I11')))
+```
+
+----
+
+# L*
+
+## Exploratory plots
+
+### Linear model
+
+```{r exploratory_lstarA}
+# Composite plot
+ggplot(data = data) +
+    aes(y = l_star,
+        x = O2Hb,
+        fill = Animal_ID) +
+    geom_point(shape = 21,
+               size = 3) +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm',
+                fill = 'blue') +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs L*',
+         subtitle = 'All animals together\nRegression line is simple linear model',
+        x = 'FO2Hb (%)',
+        y = 'L*') 
+```
+
+```{r exploratory_lstarB, fig.height = 8}
+# Small multiples
+ggplot(data = data) +
+    aes(y = l_star,
+        x = O2Hb) +
+    geom_point(shape = 21,
+               size = 3, 
+               fill = '#FFFFFF') +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm') +
+    labs(title = 'FO2Hb vs L*',
+         subtitle = 'Facetted by animal\nRegression line: linear',
+         y = 'L*',
+         x = 'FO2Hb (%)') +
+    facet_wrap(~ Animal_ID, 
+               ncol = 3)
+
+```
+
+### Quadratic model
+
+```{r exploratory_lstarC}
+# Composite plot
+ggplot(data = data) +
+    aes(y = l_star,
+        x = O2Hb,
+        fill = Animal_ID) +
+    geom_point(shape = 21,
+               size = 3) +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm',
+                fill = 'blue',
+                formula = y ~ poly(x, 2)) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs L*',
+         subtitle = 'All animals together\nRegression line is a quadratic polynomial model',
+        x = 'FO2Hb (%)',
+        y = 'L*') 
+```
+
+```{r exploratory_lstarD, fig.height = 8}
+# Small multiples
+ggplot(data = data) +
+    aes(y = l_star,
+        x = O2Hb) +
+    geom_point(shape = 21,
+               size = 3, 
+               fill = '#FFFFFF') +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                colour = 'blue',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    labs(title = 'FO2Hb vs L*',
+         subtitle = 'Facetted by animal\nRegression line: quadratic polynomial',
+         y = 'L*',
+         x = 'FO2Hb (%)') +
+    facet_wrap(~ Animal_ID, 
+               ncol = 3)
+```
+
+## Model selection
+
+Model selection based on the outcome of likelihood ratio test of goodness of fit.
+
+```{r model_lstar}
+# Null model
+lstar_null <- lmer(l_star ~ 1 + (1 | Animal_ID),
+                   data = data,
+                   REML = FALSE)
+
+## First-order polynomial (linear) model
+lstar_linear <- lmer(l_star ~ O2Hb + (1 | Animal_ID),
+                     data = data,
+                     REML = FALSE)
+
+## Second-order polynomial (quadratic) model
+lstar_poly <- lmer(l_star ~ poly(O2Hb, 2) + (1 | Animal_ID),
+                   data = data,
+                   REML = FALSE)
+
+# Compare model fits
+anova(lstar_null, lstar_linear, lstar_poly, test = 'LRT')
+```
+
+Best fit model is the second-order polynomial (quadratic) model.
+
+## Explore the best fit model
+
+```{r lstar_poly}
+# Summary output
+summary(lstar_poly)
+
+# Check model assumptions
+plot_model(model = lstar_poly,
+           type = 'diag')[2:4]
+
+# R-squared (based on likelihood ratio test)
+r.squaredLR(lstar_poly, null = lstar_null)
+
+# Root mean square error
+RMSE.merMod(lstar_poly)
+```
+
+## Generate prediction intervals
+
+```{r lstar_interval}
+# Prediction interval
+lstar_lqmm <- lqmm(fixed = l_star ~ poly(O2Hb, 2),
+                   random = ~ 1,
+                   group = ~ Animal_ID,
+                   tau = c(0.025, 0.976),
+                   data = data)
+
+lstar_interval <- as.data.frame(predict(lstar_lqmm, level = 0))
+
+names(lstar_interval) <- paste0('Q', c(2.5, 97.5))
+
+lstar_interval <- cbind(data, lstar_interval)
+
+# Numeric output
+lstar_interval %>% 
+    dplyr::select(O2Hb, l_star, Q2.5, Q97.5) %>% 
+    arrange(O2Hb) %>% 
+    unique(.) %>% 
+    kable(caption = 'L*: 95% prediction interval',
+          col.names = c('FO2Hb (%)', 'L*', 'Q2.5', 'Q97.5'))
+
+# Plot output
+ggplot(data = lstar_interval) + 
+    aes(x = O2Hb) +
+    geom_point(data = data,
+               aes(y = l_star,
+                   x = O2Hb,
+                   fill = Animal_ID),
+               shape = 21,
+               size = 3) +
+    geom_smooth(data = lstar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = lstar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs L*',
+         subtitle = '95% prediction interval',
+         y = 'L*',
+         x = 'FO2Hb (%)')
+```
+
+## Generate predicted values 
+
+```{r lstar_predicted}
+# New data
+lstar_grid <- expand.grid(O2Hb = c(15, 25, 35, 45, 55, 65, 75, 85, 95),
+                          Animal_ID = 'I12')
+
+# Generate predicted vs independent variable O2Hb
+lstar_predicted <- predict(lstar_poly, 
+                           lstar_grid, 
+                           allow.new.levels = TRUE)
+
+# Tabulate
+data.frame(O2Hb = lstar_grid$O2Hb,
+           lstar = lstar_predicted) %>% 
+    kable(caption = 'L* predicted values',
+          col.names = c('FO2Hb (%)', 'L*'))
+```
+
+----
+
+# a*
+
+## Exploratory plots
+
+### Linear model
+
+```{r exploratory_astarA}
+# Composite plot
+ggplot(data = data) +
+    aes(y = a_star,
+        x = O2Hb,
+        fill = Animal_ID) +
+    geom_point(shape = 21,
+               size = 3) +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm',
+                fill = 'blue') +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs a*',
+         subtitle = 'All animals together\nRegression line is simple linear model',
+        x = 'FO2Hb (%)',
+        y = 'a*') 
+```
+
+```{r exploratory_astarB, fig.height = 8}
+# Small multiples
+ggplot(data = data) +
+    aes(y = a_star,
+        x = O2Hb) +
+    geom_point(shape = 21,
+               size = 3, 
+               fill = '#FFFFFF') +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm') +
+    labs(title = 'FO2Hb vs a*',
+         subtitle = 'Facetted by animal\nRegression line: linear',
+         y = 'a*',
+         x = 'FO2Hb (%)') +
+    facet_wrap(~ Animal_ID, 
+               ncol = 3)
+
+```
+
+### Quadratic model
+
+```{r exploratory_astarC}
+# Composite plot
+ggplot(data = data) +
+    aes(y = a_star,
+        x = O2Hb,
+        fill = Animal_ID) +
+    geom_point(shape = 21,
+               size = 3) +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm',
+                fill = 'blue',
+                formula = y ~ poly(x, 2)) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs a*',
+         subtitle = 'All animals together\nRegression line is a quadratic polynomial model',
+        x = 'FO2Hb (%)',
+        y = 'a*') 
+```
+
+```{r exploratory_astarD, fig.height = 8}
+# Small multiples
+ggplot(data = data) +
+    aes(y = a_star,
+        x = O2Hb) +
+    geom_point(shape = 21,
+               size = 3, 
+               fill = '#FFFFFF') +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                colour = 'blue',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    labs(title = 'FO2Hb vs a*',
+         subtitle = 'Facetted by animal\nRegression line: quadratic polynomial',
+         y = 'a*',
+         x = 'FO2Hb (%)') +
+    facet_wrap(~ Animal_ID, 
+               ncol = 3)
+```
+
+## Model selection
+
+Model selection based on the outcome of likelihood ratio test of goodness of fit.
+
+```{r model_astar}
+# Null model
+astar_null <- lmer(a_star ~ 1 + (1 | Animal_ID),
+                   data = data,
+                   REML = FALSE)
+
+## First-order polynomial (linear) model
+astar_linear <- lmer(a_star ~ O2Hb + (1 | Animal_ID),
+                     data = data,
+                     REML = FALSE)
+
+## Second-order polynomial (quadratic) model
+astar_poly <- lmer(a_star ~ poly(O2Hb, 2) + (1 | Animal_ID),
+                   data = data,
+                   REML = FALSE)
+
+# Compare model fits
+anova(astar_null, astar_linear, astar_poly, test = 'LRT')
+```
+
+Best fit model is the second-order polynomial (quadratic) model.
+
+## Explore the best fit model
+
+```{r astar_poly}
+# Summary output
+summary(astar_poly)
+
+# Check model assumptions
+plot_model(model = astar_poly,
+           type = 'diag')[2:4]
+
+# R-squared (based on likelihood ratio test)
+r.squaredLR(astar_poly, null = astar_null)
+
+# Root mean square error
+RMSE.merMod(astar_poly)
+```
+
+## Generate prediction intervals
+
+```{r astar_interval}
+# Prediction interval
+astar_lqmm <- lqmm(fixed = a_star ~ poly(O2Hb, 2),
+                   random = ~ 1,
+                   group = ~ Animal_ID,
+                   tau = c(0.025, 0.976),
+                   data = data)
+
+astar_interval <- as.data.frame(predict(astar_lqmm, level = 0))
+
+names(astar_interval) <- paste0('Q', c(2.5, 97.5))
+
+astar_interval <- cbind(data, astar_interval)
+
+# Numeric output
+astar_interval %>% 
+    dplyr::select(O2Hb, a_star, Q2.5, Q97.5) %>% 
+    arrange(O2Hb) %>% 
+    unique(.) %>% 
+    kable(caption = 'a*: 95% prediction interval',
+          col.names = c('FO2Hb (%)', 'a*', 'Q2.5', 'Q97.5'))
+
+# Plot output
+ggplot(data = astar_interval) + 
+    aes(x = O2Hb) +
+    geom_point(data = data,
+               aes(y = a_star,
+                   x = O2Hb,
+                   fill = Animal_ID),
+               shape = 21,
+               size = 3) +
+    geom_smooth(data = astar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = astar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs a*',
+         subtitle = '95% prediction interval',
+         y = 'a*',
+         x = 'FO2Hb (%)')
+```
+
+## Generate predicted values 
+
+```{r astar_predicted}
+# New data
+astar_grid <- expand.grid(O2Hb = c(15, 25, 35, 45, 55, 65, 75, 85, 95),
+                          Animal_ID = 'I12')
+
+# Generate predicted vs independent variable O2Hb
+astar_predicted <- predict(astar_poly, 
+                           astar_grid, 
+                           allow.new.levels = TRUE)
+
+# Tabulate
+data.frame(O2Hb = astar_grid$O2Hb,
+           astar = astar_predicted) %>% 
+    kable(caption = 'a* predicted values',
+          col.names = c('FO2Hb (%)', 'a*'))
+```
+
+----
+
+# b*
+
+## Exploratory plots
+
+### Linear model
+
+```{r exploratory_bstarA}
+# Composite plot
+ggplot(data = data) +
+    aes(y = b_star,
+        x = O2Hb,
+        fill = Animal_ID) +
+    geom_point(shape = 21,
+               size = 3) +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm',
+                fill = 'blue') +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs b*',
+         subtitle = 'All animals together\nRegression line is simple linear model',
+        x = 'FO2Hb (%)',
+        y = 'b*') 
+```
+
+```{r exploratory_bstarB, fig.height = 8}
+# Small multiples
+ggplot(data = data) +
+    aes(y = b_star,
+        x = O2Hb) +
+    geom_point(shape = 21,
+               size = 3, 
+               fill = '#FFFFFF') +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm') +
+    labs(title = 'FO2Hb vs b*',
+         subtitle = 'Facetted by animal\nRegression line: linear',
+         y = 'b*',
+         x = 'FO2Hb (%)') +
+    facet_wrap(~ Animal_ID, 
+               ncol = 3)
+```
+
+### Quadratic model
+
+```{r exploratory_bstarC}
+# Composite plot
+ggplot(data = data) +
+    aes(y = b_star,
+        x = O2Hb,
+        fill = Animal_ID) +
+    geom_point(shape = 21,
+               size = 3) +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                method = 'lm',
+                fill = 'blue',
+                formula = y ~ poly(x, 2)) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs b*',
+         subtitle = 'All animals together\nRegression line is a quadratic polynomial model',
+        x = 'FO2Hb (%)',
+        y = 'b*') 
+```
+
+```{r exploratory_bstarD, fig.height = 8}
+# Small multiples
+ggplot(data = data) +
+    aes(y = b_star,
+        x = O2Hb) +
+    geom_point(shape = 21,
+               size = 3, 
+               fill = '#FFFFFF') +
+    geom_smooth(se = FALSE,
+                size = 0.8,
+                colour = 'blue',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    labs(title = 'FO2Hb vs b*',
+         subtitle = 'Facetted by animal\nRegression line: quadratic polynomial',
+         y = 'b*',
+         x = 'FO2Hb (%)') +
+    facet_wrap(~ Animal_ID, 
+               ncol = 3)
+```
+
+## Model selection
+
+Model selection based on the outcome of likelihood ratio test of goodness of fit.
+
+```{r model_bstar}
+# Null model
+bstar_null <- lmer(b_star ~ 1 + (1 | Animal_ID),
+                   data = data,
+                   REML = FALSE)
+
+## First-order polynomial (linear) model
+bstar_linear <- lmer(b_star ~ O2Hb + (1 | Animal_ID),
+                     data = data,
+                     REML = FALSE)
+
+## Second-order polynomial (quadratic) model
+bstar_poly <- lmer(b_star ~ poly(O2Hb, 2) + (1 | Animal_ID),
+                   data = data,
+                   REML = FALSE)
+
+# Compare model fits
+anova(bstar_null, bstar_linear, bstar_poly, test = 'LRT')
+```
+
+Best fit model is the second-order polynomial (quadratic) model.
+
+## Explore the best fit model
+
+```{r bstar_poly}
+# Summary output
+summary(bstar_poly)
+
+# Check model assumptions
+plot_model(model = bstar_poly,
+           type = 'diag')[2:4]
+
+# R-squared (based on likelihood ratio test)
+r.squaredLR(bstar_poly, null = bstar_null)
+
+# Root mean square error
+RMSE.merMod(bstar_poly)
+```
+
+## Generate prediction intervals
+
+```{r bstar_interval}
+# Prediction interval
+bstar_lqmm <- lqmm(fixed = b_star ~ poly(O2Hb, 2),
+                   random = ~ 1,
+                   group = ~ Animal_ID,
+                   tau = c(0.025, 0.976),
+                   data = data)
+
+bstar_interval <- as.data.frame(predict(bstar_lqmm, level = 0))
+
+names(bstar_interval) <- paste0('Q', c(2.5, 97.5))
+
+bstar_interval <- cbind(data, bstar_interval)
+
+# Numeric output
+bstar_interval %>% 
+    dplyr::select(O2Hb, b_star, Q2.5, Q97.5) %>% 
+    arrange(O2Hb) %>% 
+    unique(.) %>% 
+    kable(caption = 'b*: 95% prediction interval',
+          col.names = c('FO2Hb (%)', 'b*', 'Q2.5', 'Q97.5'))
+
+# Plot output
+ggplot(data = bstar_interval) + 
+    aes(x = O2Hb) +
+    geom_point(data = data,
+               aes(y = b_star,
+                   x = O2Hb,
+                   fill = Animal_ID),
+               shape = 21,
+               size = 3) +
+    geom_smooth(data = bstar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = bstar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(title = 'FO2Hb vs b*',
+         subtitle = '95% prediction interval',
+         y = 'b*',
+         x = 'FO2Hb (%)')
+```
+
+## Generate predicted values 
+
+```{r bstar_predicted}
+# New data
+bstar_grid <- expand.grid(O2Hb = c(15, 25, 35, 45, 55, 65, 75, 85, 95),
+                          Animal_ID = 'I12')
+
+# Generate predicted vs independent variable O2Hb
+bstar_predicted <- predict(bstar_poly, 
+                           bstar_grid, 
+                           allow.new.levels = TRUE)
+
+# Tabulate
+data.frame(O2Hb = bstar_grid$O2Hb,
+           bstar = bstar_predicted) %>% 
+    kable(caption = 'b* predicted values',
+          col.names = c('FO2Hb (%)', 'b*'))
+```
+
+----
+
+# Code for publication plots
+
+```{r pub_plots}
+lplot <- ggplot(data = lstar_interval) + 
+    aes(x = O2Hb) +
+    geom_point(data = data,
+               aes(y = l_star,
+                   x = O2Hb,
+                   fill = Animal_ID),
+               shape = 21,
+               size = 3) +
+    geom_smooth(data = data,
+                aes(y = l_star,
+                    x = O2Hb),
+                se = FALSE,
+                colour = '#000000',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    geom_smooth(data = lstar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = lstar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(y = 'L*') +
+    theme(axis.title.x = element_blank())
+
+aplot <- ggplot(data = astar_interval) + 
+    aes(x = O2Hb) +
+    geom_point(data = data,
+               aes(y = a_star,
+                   x = O2Hb,
+                   fill = Animal_ID),
+               shape = 21,
+               size = 3) +
+    geom_smooth(data = data,
+                aes(y = a_star,
+                    x = O2Hb),
+                se = FALSE,
+                colour = '#000000',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    geom_smooth(data = astar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = astar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(y = 'a*') +
+    theme(axis.title.x = element_blank(),
+          legend.position = 'none')
+    
+bplot <- ggplot(data = bstar_interval) + 
+    aes(x = O2Hb) +
+    geom_point(data = data,
+               aes(y = b_star,
+                   x = O2Hb,
+                   fill = Animal_ID),
+               shape = 21,
+               size = 3) +
+    geom_smooth(data = data,
+                aes(y = b_star,
+                    x = O2Hb),
+                se = FALSE,
+                colour = '#000000',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    geom_smooth(data = bstar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = bstar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    scale_fill_viridis_d(name = 'Animal') +
+    labs(y = 'b*',
+         x = expression('FO'[2]*'Hb (%)')) +
+    theme(legend.position = 'none')
+
+# Construct plot
+pub_plot <- lplot + aplot + bplot + 
+    plot_layout(ncol = 1) + 
+    plot_annotation(tag_levels = 'A')
+
+ggsave(filename = 'figures/figure_1b.png', 
+       plot = pub_plot,
+       height = 11,
+       width = 6)
+```
+----
+
+# Session Information
+
+```{r session}
+sessionInfo()
+```
