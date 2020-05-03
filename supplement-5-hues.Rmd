@@ -1,0 +1,157 @@
+---
+title: 'Supplement 5'
+subtitle: "Plots for modified Farnsworth-Munsell hue test"
+author: "Peter Kamerman and Etienne Basson"
+date: "Last updated: `r format(Sys.Date(), '%d %B %Y')`"
+mainfont: Helvetica
+geometry: margin=15mm
+---
+
+```{r setup, include = FALSE}
+# Load packages
+library(tidyverse)
+library(patchwork)
+
+# ggplot theme
+theme_set(new = theme_bw(base_size = 18) +
+              theme(panel.grid = element_blank(),
+                    plot.title = element_text(size = 18),
+                    plot.subtitle = element_text(size = 14)))
+
+# Create figures directory
+if(!dir.exists('figures')){
+    dir.create('figures')
+}
+
+# Set chunk options
+knitr::opts_chunk$set(warning = FALSE,
+                      message = FALSE,
+                      fig.align = 'center',
+                      fig.path = 'figures/supplement-5-hues/',
+                      fig.height = 5.8)
+```
+
+----
+
+# Research question
+
+1. Ordering of colour chart.
+
+----
+
+# Load data 
+
+```{r load_data}
+data <- read_rds('data-cleaned/clean-data-hue.rds')
+```
+
+----
+
+# Quick look at the data
+
+```{r quick_look}
+dim(data)
+names(data)
+glimpse(data)
+```
+
+----
+
+# Process data
+
+```{r process}
+# Convert colour from character to numeric
+data <- data %>% 
+    mutate(colour = as.numeric(str_replace(colour,
+                                           pattern = 'colour_',
+                                           replacement = '')))
+
+# Get end co-ordinate
+data <- data %>% 
+    mutate(end = 0)
+
+```
+
+----
+
+# Plot 1: Positioning of colours
+
+```{r plot_1}
+p1 <- data %>% 
+    ggplot(data = .) +
+    geom_segment(aes(x = colour, 
+                     xend = colour,
+                     y = colour_SaO2, 
+                     yend = end),
+                 linetype = 3) +
+    geom_segment(aes(x = colour, 
+                     xend = end,
+                     y = colour_SaO2, 
+                     yend = colour_SaO2),
+                 linetype = 3) +
+    stat_summary(aes(x = colour, 
+                     y = SaO2),
+                 fun = mean,
+                 fun.max = max,
+                 fun.min = min,
+                 size = 1.5,
+                 colour = '#2678B2') +
+    geom_point(aes(x = colour, 
+                   y = colour_SaO2),
+               size = 1) +
+    labs(x = 'Colour position',
+         y = expression('SaO'[2]*' (%)')) +
+    scale_y_continuous(expand = c(0, 0),
+                       limits = c(0, 100),
+                       breaks = seq(from = 0, to = 100, by = 20)) +
+    scale_x_continuous(expand = c(0, 0), 
+                       limits = c(0, 10),
+                       breaks = 0:9); p1
+```
+
+----
+
+# Plot 2: Positioning errors
+
+```{r plot_2}
+p2 <- data %>% 
+    group_by(colour) %>% 
+    summarise(sum_errors = sum(error)) %>% 
+    mutate(perc_errors = sum_errors / 20) %>% 
+    ggplot(data = .) +
+    aes(x = colour,
+        y = perc_errors) +
+    geom_point(size = 6,
+               colour = '#2678B2') +
+    labs(x = 'Colour position',
+         y = 'Proportion recording an error') +
+    scale_x_continuous(expand = c(0, 0), 
+                       limits = c(0, 10),
+                       breaks = 1:9); p2
+```
+
+----
+
+# Patchwork
+
+```{r patchwork, fig.width = 9, fig.height = 4}
+# Join plots
+p3 <- p1 + p2 + plot_annotation(tag_levels = 'A')
+
+# Output
+p3
+
+# Save
+ggsave(filename = 'figures/figure_3.png',
+       plot = p3,
+       width = 12,
+       height = 6)
+```
+
+----
+
+# Session Information
+
+```{r session}
+sessionInfo()
+```
