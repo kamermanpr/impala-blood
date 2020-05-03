@@ -1,0 +1,633 @@
+---
+title: 'Supplement 4'
+subtitle: "FO2Hb and SaO2 with other co-oximetry covariates"
+author: "Peter Kamerman and Etienne Basson"
+date: "Last updated: `r format(Sys.Date(), '%d %B %Y')`"
+mainfont: Helvetica
+geometry: margin=15mm
+---
+
+```{r setup, include = FALSE}
+# Load packages
+library(magrittr)
+library(lmerTest)
+library(merTools)
+library(MuMIn)
+library(tidyverse)
+library(knitr)
+
+# ggplot theme
+theme_set(new = theme_bw(base_size = 18) +
+              theme(panel.grid = element_blank(),
+                    plot.title = element_text(size = 18),
+                    plot.subtitle = element_text(size = 14)))
+
+# Create figures directory
+if(!dir.exists('figures')){
+    dir.create('figures')
+}
+
+# Set chunk options
+knitr::opts_chunk$set(warning = FALSE,
+                      message = FALSE,
+                      fig.align = 'center',
+                      fig.path = 'figures/supplement-4-covariates/',
+                      fig.height = 5.8)
+```
+
+----
+
+# Research question
+
+1. Determine whether along with functional oxyhaemoglobin saturation (SaO2, %Hb) and fractional oxyhaemoglobin saturation (FO2Hb, %Hb), total haemoglobin concentration (Hb, g/dl), carboxyhaemoglobin (COHb, %Hb), and methaemoglobin (MetHb, %Hb) are significant covariates in the prediction of each CIE L\*a\*b\* component.
+
+----
+
+# Load data 
+
+```{r load_data}
+data <- read_rds('data-cleaned/clean-data.rds')
+```
+
+----
+
+# Quick look at the data
+
+```{r quick_look}
+dim(data)
+names(data)
+glimpse(data)
+```
+
+----
+
+# Prepare data
+
+```{r prepare_data}
+# Convert Animal ID to a factor
+data %<>%
+    mutate(Animal_ID = factor(Animal_ID,
+                              levels = c('I1', 'I2', 'I3', 'I4', 'I5',
+                                         'I6', 'I8', 'I9', 'I10', 'I11')))
+```
+
+----
+
+# FO2Hb
+
+## L*
+
+### Exploratory plots
+
+```{r lstar_plotFO2Hb}
+lstar <- data %>% 
+    select(Animal_ID, l_star, O2Hb, total_Hb, COHb, MetHb) %>% 
+    pivot_longer(cols = c(O2Hb, total_Hb, COHb, MetHb),
+                 names_to = 'Variable',
+                 values_to = 'Values') %>% 
+    mutate(Variable = factor(Variable,
+                             levels = c('O2Hb', 'total_Hb', 'COHb', 'MetHb'),
+                             labels = c('FO2Hb (%)', 'Hb (g/dl)', 
+                                        'COHb (%)', 'MetHb (%)'))) %>% 
+    group_by(Variable) %>% 
+    nest() %>% 
+    mutate(plot = map2(.x = data,
+                       .y = Variable,
+                       ~ .x %>% 
+                           ggplot(data = .) +
+                           aes(x = Values,
+                               y = l_star) +
+                           geom_point(aes(fill = Animal_ID),
+                                      shape = 21,
+                                      size = 3,
+                                      alpha = 0.8) +
+                           geom_smooth(se = FALSE,
+                                       colour = '#000000') +
+                           labs(title = str_glue('L* vs {.y}'),
+                                subtitle = 'Black line: LOESS curve',
+                                x = .y,
+                                y = 'L*') +
+                           scale_fill_viridis_d(name = 'Animal')))
+
+walk(lstar$plot, ~print(.x))
+```
+
+Appears to be a quadratic fit for COHb, linear fit for MetHb, and no real relationship between L* and [Hb].
+
+### Model
+
+#### Full model
+
+```{r model_lstarFO2Hb1}
+# Specify model
+lstar_full <- lmer(l_star ~ poly(O2Hb, 2) +
+                       poly(COHb, 2) +
+                       MetHb +
+                       total_Hb + 
+                       (1 | Animal_ID),
+                   data = data)
+
+# Summarise model
+summary(lstar_full) 
+
+# Fixed effect with 95%CI
+cbind(fixef(lstar_full), confint(lstar_full)[3:9, ]) %>% 
+    kable(caption = 'L* full model: FO2Hb, COHb, MetHb, and [Hb]',
+          digits = 3,
+          col.names = c('Estimate', '2.5%', '97.5%'))
+```
+
+#### Compare model with and without methaemoglobin
+
+```{r model_lstarFO2Hb2}
+# FO2Hb only
+lstar_FO2Hb <- lmer(l_star ~ poly(O2Hb, 2) +
+                        (1 | Animal_ID),
+                    data = data)
+
+# FO2Hb + MetHB
+lstar_MetHb <- lmer(l_star ~ poly(O2Hb, 2) +
+                        MetHb + 
+                        (1 | Animal_ID),
+                    data = data)
+
+# Compare model fits
+anova(lstar_MetHb, lstar_FO2Hb)
+
+# Compare model R-squared values
+r.squaredLR(lstar_FO2Hb)
+r.squaredLR(lstar_MetHb)
+
+# Compare model RMSE
+RMSE.merMod(lstar_FO2Hb)
+RMSE.merMod(lstar_MetHb)
+```
+
+Likelihood ratio test found model with MetHb had a better fit, but R-squared and RMSE indicate the difference is of marginal importance.
+
+## a*
+
+### Exploratory plots
+
+```{r astar_plotFO2Hb}
+astar <- data %>% 
+    select(Animal_ID, a_star, O2Hb, total_Hb, COHb, MetHb) %>% 
+    pivot_longer(cols = c(O2Hb, total_Hb, COHb, MetHb),
+                 names_to = 'Variable',
+                 values_to = 'Values') %>% 
+    mutate(Variable = factor(Variable,
+                             levels = c('O2Hb', 'total_Hb', 'COHb', 'MetHb'),
+                             labels = c('FO2Hb (%)', 'Hb (g/dl)', 
+                                        'COHb (%)', 'MetHb (%)'))) %>% 
+    group_by(Variable) %>% 
+    nest() %>% 
+    mutate(plot = map2(.x = data,
+                       .y = Variable,
+                       ~ .x %>% 
+                           ggplot(data = .) +
+                           aes(x = Values,
+                               y = a_star) +
+                           geom_point(aes(fill = Animal_ID),
+                                      shape = 21,
+                                      size = 3,
+                                      alpha = 0.8) +
+                           geom_smooth(se = FALSE,
+                                       colour = '#000000') +
+                           labs(title = str_glue('a* vs {.y}'),
+                                subtitle = 'Black line: LOESS curve',
+                                x = .y,
+                                y = 'a*') +
+                           scale_fill_viridis_d(name = 'Animal')))
+
+walk(astar$plot, ~print(.x))
+```
+
+Appears to be a quadratic fit for COHb, linear fit for MetHb, and no real relationship between L* and [Hb].
+
+### Model
+
+#### Full model
+
+```{r model_astarFO2Hb1}
+# Specify model
+astar_full <- lmer(a_star ~ poly(O2Hb, 2) +
+                       poly(COHb, 2) +
+                       MetHb +
+                       total_Hb + 
+                       (1 | Animal_ID),
+                   data = data)
+
+# Summarise model
+summary(astar_full) 
+
+# Fixed effect with 95%CI
+cbind(fixef(astar_full), confint(astar_full)[3:9, ]) %>% 
+    kable(caption = 'a* full model: FO2Hb, COHb, MetHb, and [Hb]',
+          digits = 3,
+          col.names = c('Estimate', '2.5%', '97.5%'))
+```
+
+#### Compare model with and without methaemoglobin and carboxyhaemoglobin
+
+```{r model_astarFO2Hb2}
+# FO2Hb only
+astar_FO2Hb <- lmer(a_star ~ poly(O2Hb, 2) +
+                        (1 | Animal_ID),
+                    data = data)
+
+# FO2Hb + MetHB + COHb
+astar_MetCOHb <- lmer(a_star ~ poly(O2Hb, 2) +
+                        poly(COHb, 2) +
+                        MetHb +
+                        (1 | Animal_ID),
+                    data = data)
+
+# Compare model fits
+anova(astar_MetCOHb, astar_FO2Hb)
+
+# Compare model R-squared values
+r.squaredLR(astar_FO2Hb)
+r.squaredLR(astar_MetCOHb)
+
+# Compare model RMSE
+RMSE.merMod(astar_FO2Hb)
+RMSE.merMod(astar_MetCOHb)
+```
+
+Likelihood ratio test found model with MetHb and COHb had a better fit, but R-squared and RMSE indicate the difference is of marginal importance.
+
+## b*
+
+### Exploratory plots
+
+```{r bstar_plotFO2Hb}
+bstar <- data %>% 
+    select(Animal_ID, b_star, O2Hb, total_Hb, COHb, MetHb) %>% 
+    pivot_longer(cols = c(O2Hb, total_Hb, COHb, MetHb),
+                 names_to = 'Variable',
+                 values_to = 'Values') %>% 
+    mutate(Variable = factor(Variable,
+                             levels = c('O2Hb', 'total_Hb', 'COHb', 'MetHb'),
+                             labels = c('FO2Hb (%)', 'Hb (g/dl)', 
+                                        'COHb (%)', 'MetHb (%)'))) %>% 
+    group_by(Variable) %>% 
+    nest() %>% 
+    mutate(plot = map2(.x = data,
+                       .y = Variable,
+                       ~ .x %>% 
+                           ggplot(data = .) +
+                           aes(x = Values,
+                               y = b_star) +
+                           geom_point(aes(fill = Animal_ID),
+                                      shape = 21,
+                                      size = 3,
+                                      alpha = 0.8) +
+                           geom_smooth(se = FALSE,
+                                       colour = '#000000') +
+                           labs(title = str_glue('b* vs {.y}'),
+                                subtitle = 'Black line: LOESS curve',
+                                x = .y,
+                                y = 'b*') +
+                           scale_fill_viridis_d(name = 'Animal')))
+
+walk(bstar$plot, ~print(.x))
+```
+
+Appears to be a quadratic fit for COHb, linear fit for MetHb, and no real relationship between L* and [Hb].
+
+### Model
+
+#### Full model
+
+```{r model_bstarFO2Hb1}
+# Specify model
+bstar_full <- lmer(b_star ~ poly(O2Hb, 2) +
+                       poly(COHb, 2) +
+                       MetHb +
+                       total_Hb + 
+                       (1 | Animal_ID),
+                   data = data)
+
+# Summarise model
+summary(bstar_full) 
+
+# Fixed effect with 95%CI
+cbind(fixef(bstar_full), confint(bstar_full)[3:9, ]) %>% 
+    kable(caption = 'a* full model: FO2Hb, COHb, MetHb, and [Hb]',
+          digits = 3,
+          col.names = c('Estimate', '2.5%', '97.5%'))
+```
+
+#### Compare model with and without methaemoglobin and carboxyhaemoglobin
+
+```{r model_bstarFO2Hb2}
+# FO2Hb only
+bstar_FO2Hb <- lmer(b_star ~ poly(O2Hb, 2) +
+                        (1 | Animal_ID),
+                    data = data)
+
+# FO2Hb + MetHB + COHb
+bstar_MetCOHb <- lmer(b_star ~ poly(O2Hb, 2) +
+                        poly(COHb, 2) +
+                        MetHb +
+                        (1 | Animal_ID),
+                    data = data)
+
+# Compare model fits
+anova(bstar_MetCOHb, bstar_FO2Hb)
+
+# Compare model R-squared values
+r.squaredLR(bstar_FO2Hb)
+r.squaredLR(bstar_MetCOHb)
+
+# Compare model RMSE
+RMSE.merMod(bstar_FO2Hb)
+RMSE.merMod(bstar_MetCOHb)
+```
+
+Likelihood ratio test found model with MetHb and COHb had a better fit, but R-squared and RMSE indicate the difference is of marginal importance.
+
+----
+
+# SaO2
+
+## L*
+
+### Exploratory plots
+
+```{r lstar_plotSaO2}
+lstar <- data %>% 
+    select(Animal_ID, l_star, Coox_SaO2, total_Hb, COHb, MetHb) %>% 
+    pivot_longer(cols = c(Coox_SaO2, total_Hb, COHb, MetHb),
+                 names_to = 'Variable',
+                 values_to = 'Values') %>% 
+    mutate(Variable = factor(Variable,
+                             levels = c('Coox_SaO2', 'total_Hb', 'COHb', 'MetHb'),
+                             labels = c('SaO2 (%)', 'Hb (g/dl)', 
+                                        'COHb (%)', 'MetHb (%)'))) %>% 
+    group_by(Variable) %>% 
+    nest() %>% 
+    mutate(plot = map2(.x = data,
+                       .y = Variable,
+                       ~ .x %>% 
+                           ggplot(data = .) +
+                           aes(x = Values,
+                               y = l_star) +
+                           geom_point(aes(fill = Animal_ID),
+                                      shape = 21,
+                                      size = 3,
+                                      alpha = 0.8) +
+                           geom_smooth(se = FALSE,
+                                       colour = '#000000') +
+                           labs(title = str_glue('L* vs {.y}'),
+                                subtitle = 'Black line: LOESS curve',
+                                x = .y,
+                                y = 'L*') +
+                           scale_fill_viridis_d(name = 'Animal')))
+
+walk(lstar$plot, ~print(.x))
+```
+
+Appears to be a quadratic fit for COHb, linear fit for MetHb, and no real relationship between L* and [Hb].
+
+### Model
+
+#### Full model
+
+```{r model_lstarSaO21}
+# Specify model
+lstar_full <- lmer(l_star ~ poly(Coox_SaO2, 2) +
+                       poly(COHb, 2) +
+                       MetHb +
+                       total_Hb + 
+                       (1 | Animal_ID),
+                   data = data)
+
+# Summarise model
+summary(lstar_full) 
+
+# Fixed effect with 95%CI
+cbind(fixef(lstar_full), confint(lstar_full)[3:9, ]) %>% 
+    kable(caption = 'L* full model: SaO2, COHb, MetHb, and [Hb]',
+          digits = 3,
+          col.names = c('Estimate', '2.5%', '97.5%'))
+```
+
+#### Compare model with and without methaemoglobin
+
+```{r model_lstarSaO22}
+# SaO2 only
+lstar_SaO2 <- lmer(l_star ~ poly(Coox_SaO2, 2) +
+                        (1 | Animal_ID),
+                    data = data)
+
+# SaO2 + MetHB
+lstar_MetHb <- lmer(l_star ~ poly(Coox_SaO2, 2) +
+                        MetHb + 
+                        (1 | Animal_ID),
+                    data = data)
+
+# Compare model fits
+anova(lstar_MetHb, lstar_SaO2)
+
+# Compare model R-squared values
+r.squaredLR(lstar_SaO2)
+r.squaredLR(lstar_MetHb)
+
+# Compare model RMSE
+RMSE.merMod(lstar_SaO2)
+RMSE.merMod(lstar_MetHb)
+```
+
+Likelihood ratio test found model with MetHb had a better fit, but R-squared and RMSE indicate the difference is of marginal importance.
+
+## a*
+
+### Exploratory plots
+
+```{r astar_plotSaO2}
+astar <- data %>% 
+    select(Animal_ID, a_star, Coox_SaO2, total_Hb, COHb, MetHb) %>% 
+    pivot_longer(cols = c(Coox_SaO2, total_Hb, COHb, MetHb),
+                 names_to = 'Variable',
+                 values_to = 'Values') %>% 
+    mutate(Variable = factor(Variable,
+                             levels = c('Coox_SaO2', 'total_Hb', 'COHb', 'MetHb'),
+                             labels = c('SaO2 (%)', 'Hb (g/dl)', 
+                                        'COHb (%)', 'MetHb (%)'))) %>% 
+    group_by(Variable) %>% 
+    nest() %>% 
+    mutate(plot = map2(.x = data,
+                       .y = Variable,
+                       ~ .x %>% 
+                           ggplot(data = .) +
+                           aes(x = Values,
+                               y = a_star) +
+                           geom_point(aes(fill = Animal_ID),
+                                      shape = 21,
+                                      size = 3,
+                                      alpha = 0.8) +
+                           geom_smooth(se = FALSE,
+                                       colour = '#000000') +
+                           labs(title = str_glue('a* vs {.y}'),
+                                subtitle = 'Black line: LOESS curve',
+                                x = .y,
+                                y = 'a*') +
+                           scale_fill_viridis_d(name = 'Animal')))
+
+walk(astar$plot, ~print(.x))
+```
+
+Appears to be a quadratic fit for COHb, linear fit for MetHb, and no real relationship between L* and [Hb].
+
+### Model
+
+#### Full model
+
+```{r model_astarSaO21}
+# Specify model
+astar_full <- lmer(a_star ~ poly(Coox_SaO2, 2) +
+                       poly(COHb, 2) +
+                       MetHb +
+                       total_Hb + 
+                       (1 | Animal_ID),
+                   data = data)
+
+# Summarise model
+summary(astar_full) 
+
+# Fixed effect with 95%CI
+cbind(fixef(astar_full), confint(astar_full)[3:9, ]) %>% 
+    kable(caption = 'a* full model: SaO2, COHb, MetHb, and [Hb]',
+          digits = 3,
+          col.names = c('Estimate', '2.5%', '97.5%'))
+```
+
+#### Compare model with and without methaemoglobin and carboxyhaemoglobin
+
+```{r model_astarSaO22}
+# SaO2 only
+astar_SaO2 <- lmer(a_star ~ poly(Coox_SaO2, 2) +
+                        (1 | Animal_ID),
+                    data = data)
+
+# SaO2 + MetHB + COHb + [Hb]
+astar_MetCOHb <- lmer(a_star ~ poly(Coox_SaO2, 2) +
+                          poly(COHb, 2) +
+                          MetHb +
+                          total_Hb +
+                          (1 | Animal_ID),
+                      data = data)
+
+# Compare model fits
+anova(astar_MetCOHb, astar_SaO2)
+
+# Compare model R-squared values
+r.squaredLR(astar_SaO2)
+r.squaredLR(astar_MetCOHb)
+
+# Compare model RMSE
+RMSE.merMod(astar_SaO2)
+RMSE.merMod(astar_MetCOHb)
+```
+
+Likelihood ratio test found model with MetHb, COHb and [Hb] had a better fit, but R-squared and RMSE indicate the difference is of marginal importance.
+
+## b*
+
+### Exploratory plots
+
+```{r bstar_plotSaO2}
+bstar <- data %>% 
+    select(Animal_ID, b_star, Coox_SaO2, total_Hb, COHb, MetHb) %>% 
+    pivot_longer(cols = c(Coox_SaO2, total_Hb, COHb, MetHb),
+                 names_to = 'Variable',
+                 values_to = 'Values') %>% 
+    mutate(Variable = factor(Variable,
+                             levels = c('Coox_SaO2', 'total_Hb', 'COHb', 'MetHb'),
+                             labels = c('SaO2 (%)', 'Hb (g/dl)', 
+                                        'COHb (%)', 'MetHb (%)'))) %>% 
+    group_by(Variable) %>% 
+    nest() %>% 
+    mutate(plot = map2(.x = data,
+                       .y = Variable,
+                       ~ .x %>% 
+                           ggplot(data = .) +
+                           aes(x = Values,
+                               y = b_star) +
+                           geom_point(aes(fill = Animal_ID),
+                                      shape = 21,
+                                      size = 3,
+                                      alpha = 0.8) +
+                           geom_smooth(se = FALSE,
+                                       colour = '#000000') +
+                           labs(title = str_glue('b* vs {.y}'),
+                                subtitle = 'Black line: LOESS curve',
+                                x = .y,
+                                y = 'b*') +
+                           scale_fill_viridis_d(name = 'Animal')))
+
+walk(bstar$plot, ~print(.x))
+```
+
+Appears to be a quadratic fit for COHb, linear fit for MetHb, and no real relationship between L* and [Hb].
+
+### Model
+
+#### Full model
+
+```{r model_bstarSaO21}
+# Specify model
+bstar_full <- lmer(b_star ~ poly(Coox_SaO2, 2) +
+                       poly(COHb, 2) +
+                       MetHb +
+                       total_Hb + 
+                       (1 | Animal_ID),
+                   data = data)
+
+# Summarise model
+summary(bstar_full) 
+
+# Fixed effect with 95%CI
+cbind(fixef(bstar_full), confint(bstar_full)[3:9, ]) %>% 
+    kable(caption = 'a* full model: SaO2, COHb, MetHb, and [Hb]',
+          digits = 3,
+          col.names = c('Estimate', '2.5%', '97.5%'))
+```
+
+#### Compare model with and without methaemoglobin and carboxyhaemoglobin
+
+```{r model_bstarSaO22}
+# SaO2 only
+bstar_SaO2 <- lmer(b_star ~ poly(Coox_SaO2, 2) +
+                        (1 | Animal_ID),
+                    data = data)
+
+# SaO2 + MetHB + COHb
+bstar_MetCOHb <- lmer(b_star ~ poly(Coox_SaO2, 2) +
+                        poly(COHb, 2) +
+                        MetHb +
+                        (1 | Animal_ID),
+                    data = data)
+
+# Compare model fits
+anova(bstar_MetCOHb, bstar_SaO2)
+
+# Compare model R-squared values
+r.squaredLR(bstar_SaO2)
+r.squaredLR(bstar_MetCOHb)
+
+# Compare model RMSE
+RMSE.merMod(bstar_SaO2)
+RMSE.merMod(bstar_MetCOHb)
+```
+
+Likelihood ratio test found model with MetHb and COHb had a better fit, but R-squared and RMSE indicate the difference is of marginal importance.
+
+----
+
+# Session Information
+
+```{r session}
+sessionInfo()
+```
