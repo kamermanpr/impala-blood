@@ -680,17 +680,16 @@ data.frame(SaO2 = bstar_grid$Coox_SaO2,
 # Code for publication plots
 
 ```{r pub_plots}
-lplot <- ggplot(data = lstar_interval) + 
+# Individual plots
+l <- ggplot(data = lstar_interval) + 
     aes(x = Coox_SaO2) +
     geom_point(data = data,
-               aes(y = l_star,
-                   x = Coox_SaO2,
-                   fill = Animal_ID),
+               aes(y = l_star),
+               size = 3,
                shape = 21,
-               size = 3) +
+               fill = '#FFFFFF') +
     geom_smooth(data = data,
-                aes(y = l_star,
-                    x = Coox_SaO2),
+                aes(y = l_star),
                 se = FALSE,
                 colour = '#000000',
                 method = 'lm',
@@ -701,21 +700,124 @@ lplot <- ggplot(data = lstar_interval) +
     geom_smooth(data = lstar_interval,
                 aes(y = `Q97.5`),
                 se = FALSE) +
-    scale_fill_viridis_d(name = 'Animal') +
+    annotate(geom = 'text', 
+             x = 29, y = 24.2,
+             label = 'Pseudo-R ^2 == 0.94', 
+             parse = TRUE, 
+             size = 4) +
+    annotate(geom = 'text', 
+             x = 25, y = 23.2,
+             label = 'RMSE = 0.66', 
+             size = 4) +
+    scale_y_continuous(limits = c(8, 25),
+                       breaks = c(12, 16, 20, 24),
+                       expand = c(0, 0)) +
+    labs(y = 'L*',
+         x = expression('SaO'[2]*' (%)')) 
+
+ggsave(filename = 'figures/sao2-L.png',
+       plot = l,
+       height = 4,
+       width = 5)
+
+a <- ggplot(data = astar_interval) + 
+    aes(x = Coox_SaO2) +
+    geom_point(data = data,
+               aes(y = a_star),
+               size = 3,
+               shape = 21,
+               fill = '#FFFFFF') +
+    geom_smooth(data = data,
+                aes(y = a_star),
+                se = FALSE,
+                colour = '#000000',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    geom_smooth(data = astar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = astar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    annotate(geom = 'text', 
+             x = 29, y = 52,
+             label = 'Pseudo-R ^2 == 0.93', 
+             parse = TRUE, 
+             size = 4) +
+    annotate(geom = 'text', 
+             x = 25, y = 50,
+             label = 'RMSE = 1.42', 
+             size = 4) +
+    scale_y_continuous(limits = c(18, 52),
+                       breaks = c(20, 30, 40, 50)) +
+    labs(y = 'a*',
+         x = expression('SaO'[2]*' (%)')) 
+
+ggsave(filename = 'figures/sao2-a.png',
+       plot = a,
+       height = 4,
+       width = 5)
+    
+b <- ggplot(data = bstar_interval) + 
+    aes(x = Coox_SaO2) +
+    geom_point(data = data,
+               aes(y = b_star),
+               size = 3,
+               shape = 21,
+               fill = '#FFFFFF') +
+    geom_smooth(data = data,
+                aes(y = b_star),
+                se = FALSE,
+                colour = '#000000',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    geom_smooth(data = bstar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = bstar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
+    annotate(geom = 'text', 
+             x = 28, y = 39,
+             label = 'Pseudo-R ^2 == 0.90', 
+             parse = TRUE, 
+             size = 4) +
+    annotate(geom = 'text', 
+             x = 25, y = 37,
+             label = 'RMSE = 1.66', 
+             size = 4) +
+    scale_y_continuous(limits = c(6, 39),
+                       breaks = c(10, 20, 30)) +
+    labs(y = 'b*',
+         x = expression('SaO'[2]*' (%)')) 
+
+ggsave(filename = 'figures/sao2-b.png',
+       plot = b,
+       height = 4,
+       width = 5)
+
+# Stacked plot
+lplot <- ggplot(data = lstar_interval) + 
+    aes(x = Coox_SaO2) +
+    geom_smooth(data = data,
+                aes(y = l_star),
+                se = FALSE,
+                colour = '#000000',
+                method = 'lm',
+                formula = y ~ poly(x, 2, raw = TRUE)) +
+    geom_smooth(data = lstar_interval,
+                aes(y = `Q2.5`),
+                se = FALSE) +
+    geom_smooth(data = lstar_interval,
+                aes(y = `Q97.5`),
+                se = FALSE) +
     labs(y = 'L*') +
     theme(axis.title.x = element_blank())
 
 aplot <- ggplot(data = astar_interval) + 
     aes(x = Coox_SaO2) +
-    geom_point(data = data,
-               aes(y = a_star,
-                   x = Coox_SaO2,
-                   fill = Animal_ID),
-               shape = 21,
-               size = 3) +
     geom_smooth(data = data,
-                aes(y = a_star,
-                    x = Coox_SaO2),
+                aes(y = a_star),
                 se = FALSE,
                 colour = '#000000',
                 method = 'lm',
@@ -726,22 +828,14 @@ aplot <- ggplot(data = astar_interval) +
     geom_smooth(data = astar_interval,
                 aes(y = `Q97.5`),
                 se = FALSE) +
-    scale_fill_viridis_d(name = 'Animal') +
     labs(y = 'a*') +
     theme(axis.title.x = element_blank(),
           legend.position = 'none')
     
 bplot <- ggplot(data = bstar_interval) + 
     aes(x = Coox_SaO2) +
-    geom_point(data = data,
-               aes(y = b_star,
-                   x = Coox_SaO2,
-                   fill = Animal_ID),
-               shape = 21,
-               size = 3) +
     geom_smooth(data = data,
-                aes(y = b_star,
-                    x = Coox_SaO2),
+                aes(y = b_star),
                 se = FALSE,
                 colour = '#000000',
                 method = 'lm',
@@ -752,7 +846,6 @@ bplot <- ggplot(data = bstar_interval) +
     geom_smooth(data = bstar_interval,
                 aes(y = `Q97.5`),
                 se = FALSE) +
-    scale_fill_viridis_d(name = 'Animal') +
     labs(y = 'b*',
          x = expression('SaO'[2]*' (%)')) +
     theme(legend.position = 'none')

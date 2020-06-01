@@ -69,10 +69,12 @@ data_cols <- data %>%
            `FO2Hb (%)` = O2Hb,
            `COHb (%)` = COHb,
            `MetHb (%)` = MetHb) %>%
+    # Compact 40+ minutes into one group
+    mutate(Time_minutes = ifelse(Time_minutes > 30,
+                                 yes = 40,
+                                 no = Time_minutes)) #%>% 
     # Limit time to first 30 minutes
-    filter(Time_minutes <= 30)
-# Data points per animal
-data_n <- 
+    #filter(Time_minutes <= 30)
 
 # Average over trials for each animal
 data_compact <- data_cols %>% 
@@ -128,9 +130,24 @@ trials %>%
     kable(caption = 'Number of trails and measurements')
 ```
 
-## Summary statistics fro co-oximetry measurements
+## Summary statistics for co-oximetry measurements
 
 Where animals were involved in more than one trial, data points occurring at the same time-point across trials were averaged.
+
+### Number of animals per time point
+
+```{r numbers}
+data_cols %>% 
+    group_by(Animal_ID) %>% 
+    distinct_at(.vars = vars(Time_minutes)) %>% 
+    group_by(Time_minutes) %>% 
+    summarise(Count = n()) %>% 
+    kable(caption = 'Number of animals per time point',
+          col.names = c('Time (minutes)', 'Number of animals'))
+```
+
+
+### Tabulated data
 
 ```{r tabulate, results = 'asis'}
 # Average over trials for each animal
